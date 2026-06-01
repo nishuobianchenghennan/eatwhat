@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import type { DrawResult, OverviewStats } from '@eatwhat/shared'
+import type { DrawResult, OverviewStats, PartyPersonDrawResult } from '@eatwhat/shared'
 import { api, ApiError } from '@/lib/api'
 
 type PersonRow = {
@@ -179,6 +179,7 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
   const [foods, setFoods] = useState<FoodRow[]>([])
   const [selectedPeople, setSelectedPeople] = useState<number[]>([])
   const [selectedFoods, setSelectedFoods] = useState<number[]>([])
+  const [partyPersonResult, setPartyPersonResult] = useState<PartyPersonDrawResult | null>(null)
   const [result, setResult] = useState<DrawResult | null>(null)
   const [notice, setNotice] = useState<NoticeState>(null)
   const isParty = mode === 'party'
@@ -192,19 +193,46 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
       .catch((error) => setNotice({ type: 'error', text: getErrorMessage(error) }))
   }, [])
 
-  const handleDraw = async () => {
-    if (isParty && selectedPeople.length === 0) {
+  useEffect(() => {
+    if (!isParty) {
+      return
+    }
+    setPartyPersonResult(null)
+    setResult(null)
+  }, [isParty, selectedPeople])
+
+  const handlePartyPersonDraw = async () => {
+    if (selectedPeople.length === 0) {
       setNotice({ type: 'error', text: '请至少选择一位参与人员' })
       return
     }
+
+    try {
+      const drawResult = await api.post<PartyPersonDrawResult>('/draw/party/person', {
+        personIds: selectedPeople
+      })
+      setPartyPersonResult(drawResult)
+      setResult(null)
+      setNotice({ type: 'success', text: `已抽取本轮点餐人：${drawResult.selectedPerson.name}` })
+    } catch (error) {
+      setNotice({ type: 'error', text: getErrorMessage(error) })
+    }
+  }
+
+  const handleDraw = async () => {
     if (selectedFoods.length === 0) {
       setNotice({ type: 'error', text: '请至少选择一个候选美食' })
+      return
+    }
+    if (isParty && !partyPersonResult) {
+      setNotice({ type: 'error', text: '请先抽取本轮点餐人' })
       return
     }
 
     try {
       const drawResult = await api.post<DrawResult>(isParty ? '/draw/party' : '/draw/quick', {
         personIds: selectedPeople,
+        selectedPersonId: partyPersonResult?.selectedPerson.id,
         foodIds: selectedFoods
       })
       setResult(drawResult)
@@ -219,7 +247,7 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
       <section className="rounded-3xl bg-white p-6 shadow-soft">
         <PageTitle
           title={isParty ? '完整饭局模式' : '快速抽美食模式'}
-          description={isParty ? '选择参与人员和候选美食，由后端等概率随机生成最终结果。' : '跳过人物环节，直接从候选美食中等概率抽取。'}
+          description={isParty ? '先抽取本轮点餐人，再从候选美食中等概率抽取最终结果。' : '跳过人物环节，直接从候选美食中等概率抽取。'}
         />
         <Notice notice={notice} />
       </section>
@@ -243,9 +271,20 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
         />
       </div>
 
+      {isParty && partyPersonResult && (
+        <motion.section initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="rounded-3xl bg-white p-6 text-center shadow-soft">
+          <div className="text-sm text-slate-600">本轮点餐人</div>
+          <div className="mt-2 text-3xl font-bold text-brand-700">{partyPersonResult.selectedPerson.name}</div>
+          <div className="mt-2 text-xs text-slate-500">{formatTime(partyPersonResult.createdAt)}</div>
+        </motion.section>
+      )}
+
       <section className="rounded-3xl bg-white p-6 text-center shadow-soft">
-        <button onClick={handleDraw} className="rounded-full bg-brand-500 px-8 py-3 text-sm font-semibold text-white shadow-soft">
-          开始抽取
+        <button
+          onClick={isParty && !partyPersonResult ? handlePartyPersonDraw : handleDraw}
+          className="rounded-full bg-brand-500 px-8 py-3 text-sm font-semibold text-white shadow-soft"
+        >
+          {isParty && !partyPersonResult ? '抽取本轮点餐人' : '开始抽取美食'}
         </button>
         {result && (
           <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mx-auto mt-6 max-w-xl rounded-3xl bg-orange-50 p-6">
@@ -265,8 +304,9 @@ function PoolPage({ type }: { type: 'people' | 'foods' }) {
   const [category, setCategory] = useState('')
   const [notice, setNotice] = useState<NoticeState>(null)
   const isFood = type === 'foods'
+  const canDelete = hasAdminToken()
 
-  useEffect(() => {
+  const loadItems = () => {
     const params = new URLSearchParams()
     if (keyword.trim()) params.set('keyword', keyword.trim())
     if (isFood && category) params.set('category', category)
@@ -275,9 +315,21 @@ function PoolPage({ type }: { type: 'people' | 'foods' }) {
       .get<FoodRow[]>(`/${type}${params.toString() ? `?${params.toString()}` : ''}`)
       .then(setItems)
       .catch((error) => setNotice({ type: 'error', text: getErrorMessage(error) }))
-  }, [type, keyword, category, isFood])
+  }
+
+  useEffect(loadItems, [type, keyword, category, isFood])
 
   const categories = useMemo(() => Array.from(new Set(items.map((item) => item.category).filter(Boolean))) as string[], [items])
+
+  const handleDelete = async (id: number) => {
+    try {
+      await api.post(`/admin/${type}/${id}/delete`)
+      setNotice({ type: 'success', text: '删除成功' })
+      loadItems()
+    } catch (error) {
+      setNotice({ type: 'error', text: getErrorMessage(error) })
+    }
+  }
 
   return (
     <section className="rounded-3xl bg-white p-6 shadow-soft">
@@ -297,7 +349,7 @@ function PoolPage({ type }: { type: 'people' | 'foods' }) {
         </Link>
       </div>
       <Notice notice={notice} />
-      <ItemGrid items={items} isFood={isFood} />
+      <ItemGrid items={items} isFood={isFood} onDelete={canDelete ? handleDelete : undefined} />
     </section>
   )
 }
@@ -355,10 +407,10 @@ function ReviewPage({ type }: { type: 'people' | 'foods' }) {
 
   useEffect(loadItems, [type])
 
-  const handleAction = async (id: number, action: 'approve' | 'reject') => {
+  const handleAction = async (id: number, action: 'approve' | 'reject' | 'delete') => {
     try {
       await api.post(`/admin/${type}/${id}/${action}`)
-      setNotice({ type: 'success', text: action === 'approve' ? '已通过' : '已拒绝' })
+      setNotice({ type: 'success', text: action === 'approve' ? '已通过' : action === 'reject' ? '已拒绝' : '删除成功' })
       loadItems()
     } catch (error) {
       setNotice({ type: 'error', text: getErrorMessage(error) })
@@ -378,9 +430,10 @@ function ReviewPage({ type }: { type: 'people' | 'foods' }) {
                 {isFood ? `${item.category ?? '其他'} ｜ ` : ''}提交人：{item.submitted_by ?? '匿名'}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button onClick={() => handleAction(item.id, 'approve')} className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white">通过</button>
               <button onClick={() => handleAction(item.id, 'reject')} className="rounded-full border border-orange-200 px-4 py-2 text-sm font-semibold text-slate-700">拒绝</button>
+              <button onClick={() => handleAction(item.id, 'delete')} className="rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600">删除</button>
             </div>
           </div>
         ))}
@@ -439,7 +492,15 @@ function SelectablePanel({
   )
 }
 
-function ItemGrid({ items, isFood }: { items: FoodRow[]; isFood: boolean }) {
+function ItemGrid({
+  items,
+  isFood,
+  onDelete
+}: {
+  items: FoodRow[]
+  isFood: boolean
+  onDelete?: (id: number) => void
+}) {
   return (
     <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
@@ -447,6 +508,14 @@ function ItemGrid({ items, isFood }: { items: FoodRow[]; isFood: boolean }) {
           <div className="font-semibold text-slate-900">{item.name}</div>
           {isFood && <div className="mt-1 text-xs text-brand-700">{item.category ?? '其他'}</div>}
           {item.note && <div className="mt-2 text-sm text-slate-500">{item.note}</div>}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(item.id)}
+              className="mt-4 rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600"
+            >
+              删除
+            </button>
+          )}
         </div>
       ))}
       {items.length === 0 && <EmptyText text="暂无数据" />}

@@ -67,6 +67,19 @@ export async function adminRoutes(request: Request, env: Env) {
     return json(null, action === 'approve' ? '审核通过' : '已拒绝')
   }
 
+  if (url.pathname.match(/^\/api\/admin\/(people|foods)\/\d+\/delete$/) && request.method === 'POST') {
+    const [, resource, rawId] = url.pathname.match(/^\/api\/admin\/(people|foods)\/(\d+)\/delete$/) ?? []
+    const tableName = resource === 'people' ? 'people' : 'foods'
+    const id = Number(rawId)
+    const now = nowIso()
+
+    await env.DB.prepare(`UPDATE ${tableName} SET status = 'removed', updated_at = ?, reviewed_at = ?, reviewed_by = 'admin' WHERE id = ?`)
+      .bind(now, now, id)
+      .run()
+
+    return json(null, '删除成功')
+  }
+
   if (url.pathname === '/api/admin/people/approve-edited' && request.method === 'POST') {
     const body = (await request.json()) as Record<string, unknown>
     const id = Number(body.id)

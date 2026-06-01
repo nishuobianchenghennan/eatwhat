@@ -63,6 +63,18 @@ export interface OverviewStats {
 export interface PartyDrawRequest {
   personIds: number[]
   foodIds: number[]
+  selectedPersonId?: number
+}
+
+export interface PartyPersonDrawRequest {
+  personIds: number[]
+}
+
+export interface PartyPersonDrawResult {
+  mode: 'party'
+  selectedPerson: PersonItem
+  participantPeople: PersonItem[]
+  createdAt: string
 }
 
 export interface QuickDrawRequest {
