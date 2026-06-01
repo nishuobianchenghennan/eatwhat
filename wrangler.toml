@@ -8,4 +8,4 @@ ADMIN_TOKEN = "change-me-in-cloudflare-dashboard"
 [[d1_databases]]
 binding = "DB"
 database_name = "eatwhat"
-database_id = "replace-with-your-d1-database-id"
+database_id = "081b29cb-7d2f-44d5-a539-eac87335d228"
