@@ -5,6 +5,7 @@ import { foodsRoutes } from './routes/foods'
 import { submissionRoutes } from './routes/submissions'
 import { adminRoutes } from './routes/admin'
 import { drawRoutes } from './routes/draw'
+import { statsRoutes } from './routes/stats'
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -33,6 +34,10 @@ export default {
 
       if (url.pathname.startsWith('/api/admin')) {
         return adminRoutes(request, env)
+      }
+
+      if (url.pathname.startsWith('/api/stats')) {
+        return statsRoutes(request, env)
       }
 
       if (url.pathname.startsWith('/api/draw')) {

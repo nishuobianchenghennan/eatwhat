@@ -1,7 +1,23 @@
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import type { PublicOverviewStats } from '@eatwhat/shared'
+import { api } from '@/lib/api'
 
 export function HomePage() {
+  const [stats, setStats] = useState<PublicOverviewStats | null>(null)
+  const [statsError, setStatsError] = useState(false)
+
+  useEffect(() => {
+    api
+      .get<PublicOverviewStats>('/stats/overview')
+      .then((data) => {
+        setStats(data)
+        setStatsError(false)
+      })
+      .catch(() => setStatsError(true))
+  }, [])
+
   return (
     <div className="space-y-8">
       <section className="grid gap-6 rounded-3xl bg-white p-6 shadow-soft md:grid-cols-[1.4fr,1fr] md:p-8">
@@ -26,9 +42,10 @@ export function HomePage() {
           </div>
         </div>
         <div className="grid gap-3 rounded-2xl bg-gradient-to-br from-brand-500 to-amber-500 p-5 text-white">
-          <Stat label="人物池" value="--" />
-          <Stat label="美食池" value="--" />
-          <Stat label="今日转盘" value="--" />
+          <Stat label="人物池" value={formatStatValue(stats?.approvedPeople)} />
+          <Stat label="美食池" value={formatStatValue(stats?.approvedFoods)} />
+          <Stat label="今日转盘" value={formatStatValue(stats?.todayDraws)} />
+          {statsError && <div className="text-xs text-white/80">统计数据暂时加载失败</div>}
         </div>
       </section>
 
@@ -40,6 +57,10 @@ export function HomePage() {
       </section>
     </div>
   )
+}
+
+function formatStatValue(value: number | undefined) {
+  return value === undefined ? '--' : String(value)
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

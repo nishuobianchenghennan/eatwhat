@@ -17,6 +17,11 @@ type FoodRow = PersonRow & {
   note?: string | null
 }
 
+type SelectableGroup = {
+  name: string
+  itemIds: number[]
+}
+
 type SpinLogRow = {
   id: number
   mode: string
@@ -183,6 +188,7 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
   const [result, setResult] = useState<DrawResult | null>(null)
   const [notice, setNotice] = useState<NoticeState>(null)
   const isParty = mode === 'party'
+  const foodGroups = useMemo(() => buildFoodGroups(foods), [foods])
 
   useEffect(() => {
     Promise.all([api.get<PersonRow[]>('/people'), api.get<FoodRow[]>('/foods')])
@@ -267,7 +273,8 @@ function DrawPage({ mode }: { mode: 'party' | 'quick' }) {
           items={foods}
           selectedIds={selectedFoods}
           onChange={setSelectedFoods}
-          renderMeta={(item) => item.category ?? '其他'}
+          renderMeta={(item) => getFoodCategory(item)}
+          groups={foodGroups}
         />
       </div>
 
@@ -448,16 +455,37 @@ function SelectablePanel({
   items,
   selectedIds,
   onChange,
-  renderMeta
+  renderMeta,
+  groups
 }: {
   title: string
   items: FoodRow[]
   selectedIds: number[]
   onChange: (ids: number[]) => void
   renderMeta: (item: FoodRow) => string
+  groups?: SelectableGroup[]
 }) {
   const toggle = (id: number) => {
     onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id])
+  }
+
+  const toggleGroup = (group: SelectableGroup) => {
+    const isAllSelected = group.itemIds.every((id) => selectedIds.includes(id))
+
+    if (isAllSelected) {
+      onChange(selectedIds.filter((id) => !group.itemIds.includes(id)))
+      return
+    }
+
+    onChange(Array.from(new Set([...selectedIds, ...group.itemIds])))
+  }
+
+  const getGroupStatus = (group: SelectableGroup) => {
+    const selectedCount = group.itemIds.filter((id) => selectedIds.includes(id)).length
+
+    if (selectedCount === 0) return 'none'
+    if (selectedCount === group.itemIds.length) return 'all'
+    return 'partial'
   }
 
   return (
@@ -472,6 +500,33 @@ function SelectablePanel({
           <button onClick={() => onChange([])} className="rounded-full border border-orange-200 px-4 py-2 text-sm font-semibold text-slate-700">清空选择</button>
         </div>
       </div>
+      {groups && groups.length > 0 && (
+        <div className="mt-5 rounded-2xl bg-orange-50 p-4">
+          <div className="text-sm font-semibold text-slate-700">按分组快速选择</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {groups.map((group) => {
+              const status = getGroupStatus(group)
+              const statusClassName =
+                status === 'all'
+                  ? 'border-brand-500 bg-brand-500 text-white'
+                  : status === 'partial'
+                    ? 'border-brand-500 bg-white text-brand-700'
+                    : 'border-orange-200 bg-white text-slate-700'
+
+              return (
+                <button
+                  key={group.name}
+                  onClick={() => toggleGroup(group)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${statusClassName}`}
+                >
+                  {group.name}
+                  {status === 'partial' ? '（部分）' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {items.map((item) => {
           const isSelected = selectedIds.includes(item.id)
@@ -566,6 +621,23 @@ function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
   return '请求失败'
+}
+
+function getFoodCategory(item: FoodRow) {
+  return item.category?.trim() || '其他'
+}
+
+function buildFoodGroups(items: FoodRow[]): SelectableGroup[] {
+  const groupMap = new Map<string, number[]>()
+
+  items.forEach((item) => {
+    const category = getFoodCategory(item)
+    const groupItemIds = groupMap.get(category) ?? []
+    groupItemIds.push(item.id)
+    groupMap.set(category, groupItemIds)
+  })
+
+  return Array.from(groupMap.entries()).map(([name, itemIds]) => ({ name, itemIds }))
 }
 
 function formatTime(value?: string | null) {
