@@ -1,6 +1,8 @@
-import type { PublicOverviewStats } from '@eatwhat/shared'
+import type { OverviewStats } from '@eatwhat/shared'
 import type { Env } from '../utils/auth'
 import { fail, json } from '../utils/response'
+
+type PublicOverviewStats = Pick<OverviewStats, 'approvedPeople' | 'approvedFoods' | 'todayDraws'>
 
 /**
  * 公开统计接口

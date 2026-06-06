@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import type { PublicOverviewStats } from '@eatwhat/shared'
+import type { OverviewStats } from '@eatwhat/shared'
 import { api } from '@/lib/api'
+
+type PublicOverviewStats = Pick<OverviewStats, 'approvedPeople' | 'approvedFoods' | 'todayDraws'>
 
 export function HomePage() {
   const [stats, setStats] = useState<PublicOverviewStats | null>(null)
