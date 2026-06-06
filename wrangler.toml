@@ -1,4 +1,4 @@
-name = "eatwhat-api"
+name = "eatwhat"
 main = "apps/worker/src/index.ts"
 compatibility_date = "2025-01-01"
 
